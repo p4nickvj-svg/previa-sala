@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mart Minas Conexão · prévia da sala imersiva</title>
+<!--
+  Sala interativa do Mart Minas Conexão (BP V2), um arquivo só, com o vídeo embutido.
+  Modelo: provas/sala_interativa.html. Quem preenche é o provas/sala_app.py, a partir de um vídeo da cruz.
+  A geometria e o mapeamento são os mesmos do provas/prova.py (mapa_vista) e do trabalho/gabarito/sala.py:
+  sala x = 0..1920 (CURTA), y = 0..720 (altura), z = 0..3024 (LONGA); ROXA em z = 3024 (a frente), CIANO em z = 0,
+  AMARELA em x = 0, AZUL em x = 1920. Sem bibliotecas: WebGL2 puro.
+-->
+<style>
+  :root { --fundo:#000; --painel:rgba(14,14,16,.82); --linha:rgba(255,255,255,.12); --texto:#e9e9ec; --fraco:#9a9aa3; --ouro:#e7b54a; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--fundo); color:var(--texto); overflow:hidden;
+    font:14px/1.35 "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-user-select:none; user-select:none; }
+  canvas#gl { position:fixed; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+  canvas#gl.arrastando { cursor:grabbing; }
+  .painel { background:var(--painel); border:1px solid var(--linha); border-radius:10px; backdrop-filter:blur(6px); }
+  #topo { position:fixed; top:12px; left:12px; right:12px; display:flex; gap:10px; align-items:flex-start; pointer-events:none; }
+  #titulo { padding:8px 12px; pointer-events:auto; max-width:min(60vw, 720px); }
+  #titulo b { font-weight:600; }
+  #titulo small { display:block; color:var(--fraco); }
+  #vistas { margin-left:auto; display:flex; gap:6px; padding:6px; pointer-events:auto; flex-wrap:wrap; justify-content:flex-end; }
+  button, select { font:inherit; color:var(--texto); background:rgba(255,255,255,.06); border:1px solid var(--linha);
+    border-radius:7px; padding:6px 10px; cursor:pointer; }
+  button:hover, select:hover { background:rgba(255,255,255,.12); }
+  button.ativo { border-color:var(--ouro); color:var(--ouro); }
+  kbd { font:12px ui-monospace, Consolas, monospace; color:var(--fraco); border:1px solid var(--linha); border-radius:4px; padding:0 4px; }
+  #barra { position:fixed; left:12px; right:12px; bottom:12px; display:flex; gap:8px; align-items:center; padding:8px 10px; }
+  #tempo { font:13px ui-monospace, Consolas, monospace; min-width:150px; text-align:center; color:var(--fraco); }
+  #linha { flex:1; accent-color:var(--ouro); min-width:80px; }
+  #mapa { position:fixed; right:12px; bottom:68px; width:230px; height:184px; padding:0; }
+  #ajuda { position:fixed; left:12px; bottom:68px; padding:10px 12px; color:var(--fraco); max-width:330px; }
+  #ajuda div { margin:2px 0; }
+  #ajuda b { color:var(--texto); font-weight:600; }
+  .rotulo { position:fixed; transform:translate(-50%,-50%); padding:3px 8px; border-radius:6px; font-weight:600; font-size:13px;
+    background:rgba(0,0,0,.6); border:1px solid rgba(255,255,255,.25); pointer-events:none; white-space:nowrap; display:none; }
+  #aviso { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px;
+    background:#000; color:var(--fraco); z-index:10; text-align:center; padding:24px; }
+  #aviso b { color:var(--texto); font-size:16px; }
+  .oculto { display:none !important; }
+  #dica { position:fixed; left:50%; bottom:76px; transform:translateX(-50%); padding:8px 14px; white-space:nowrap;
+    transition:opacity .8s; display:none; }
+  @media (max-width: 760px) {
+    #ajuda, #mapa, #bAnt, #bProx, #vel { display:none; }
+    #dica { display:block; }
+    #topo { gap:6px; }
+    #titulo { padding:6px 10px; }
+    #titulo b { font-size:13px; }
+    #vistas { gap:4px; padding:4px; }
+    button { padding:5px 8px; font-size:13px; }
+    #barra { gap:6px; padding:6px 8px; }
+    #tempo { min-width:0; font-size:11px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="topo">
+  <div id="titulo" class="painel"><b>Mart Minas Conexão · prévia da sala imersiva</b><small id="origem"></small></div>
+  <div id="vistas" class="painel">
+    <button data-vista="publico" title="1">Público</button>
+    <button data-vista="frente" title="2">Frente</button>
+    <button data-vista="costas" title="3">Costas</button>
+    <button data-vista="cima" title="4">Cima</button>
+    <button id="bNomes" title="G">Nomes</button>
+    <button id="bTela" title="F">Tela cheia</button>
+  </div>
+</div>
+
+<div id="ajuda" class="painel">
+  <div><b>Olhar:</b> arraste com o mouse (ou o dedo)</div>
+  <div><b>Andar:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas · <kbd>Shift</kbd> rápido</div>
+  <div><b>Subir/descer:</b> <kbd>E</kbd> / <kbd>Q</kbd> · <b>Zoom:</b> roda do mouse</div>
+  <div><b>Vistas:</b> <kbd>1</kbd> público <kbd>2</kbd> frente <kbd>3</kbd> costas <kbd>4</kbd> cima</div>
+  <div><b>Vídeo:</b> <kbd>Espaço</kbd> play · <kbd>,</kbd> <kbd>.</kbd> quadro a quadro</div>
+  <div><kbd>G</kbd> nomes · <kbd>F</kbd> tela cheia · <kbd>H</kbd> esconde esta ajuda</div>
+</div>
+
+<canvas id="mapa" class="painel" width="460" height="368"></canvas>
+
+<div id="barra" class="painel">
+  <button id="bPlay" title="Espaço">❚❚</button>
+  <button id="bAnt" title=",">◂</button>
+  <button id="bProx" title=".">▸</button>
+  <input id="linha" type="range" min="0" max="1000" step="1" value="0">
+  <span id="tempo">00:00.00 / 00:00.00</span>
+  <select id="vel" title="velocidade">
+    <option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option>
+  </select>
+  <button id="bSom" class="oculto">Som</button>
+</div>
+
+<div id="dica" class="painel">Arraste para olhar · dois dedos para andar</div>
+
+<div id="aviso"><b>Carregando a sala…</b><span id="avisoTxt">montando o vídeo embutido</span></div>
+
+<script type="application/json" id="meta">{"titulo": "Mart Minas Conexão · prévia da sala imersiva", "origem": "Teste de publicação", "fps": 30.0, "olho": 0.6, "som": false, "video": "sala.mp4"}</script>
+<script type="application/octet-stream" id="video64"></script>
+<script>
+"use strict";
+// ------------------------------------------------------------------ geometria (igual a sala.py / prova.py)
+const ALT = 720, LONGA = 3024, CURTA = 1920, CRUZ_W = 4464, CRUZ_H = 3360;
+const W = CURTA, D = LONGA, H = ALT;
+// cantos c0..c3 (c0->c1 = eixo u, de largura tw; c0->c3 = eixo v, de altura th) e normal para dentro.
+const SUP = [
+  { nome: "AZUL",    id: 0, c: [[W,H,D],[W,H,0],[W,0,0],[W,0,D]], n: [-1,0,0], tw: LONGA, th: ALT, cor: "#1a3cff" },
+  { nome: "AMARELA", id: 1, c: [[0,H,0],[0,H,D],[0,0,D],[0,0,0]], n: [ 1,0,0], tw: LONGA, th: ALT, cor: "#ffd200" },
+  { nome: "ROXA",    id: 2, c: [[0,H,D],[W,H,D],[W,0,D],[0,0,D]], n: [0,0,-1], tw: CURTA, th: ALT, cor: "#8c2cff" },
+  { nome: "CIANO",   id: 3, c: [[W,H,0],[0,H,0],[0,0,0],[W,0,0]], n: [0,0, 1], tw: CURTA, th: ALT, cor: "#00e5ff" },
+  { nome: "PISO",    id: 4, c: [[W,0,D],[W,0,0],[0,0,0],[0,0,D]], n: [0,1,0],  tw: LONGA, th: CURTA, cor: "#ff00ff" },
+  { nome: "TETO",    id: 5, c: [[0,H,0],[W,H,0],[W,H,D],[0,H,D]], n: [0,-1,0], tw: CURTA, th: LONGA, cor: "#333" },
+];
+const META = JSON.parse(document.getElementById("meta").textContent);
+const OLHO = META.olho || 0.6;
+// câmeras da prova (prova.py vistas): pos, alvo, fov horizontal
+const VISTAS = {
+  publico: { pos: [W/2, H*OLHO, D/2], alvo: [W/2, H*OLHO, D], fov: 90 },
+  frente:  { pos: [W/2, 300, -700],   alvo: [W/2, 250, D],    fov: 84 },
+  costas:  { pos: [W/2, 300, D+700],  alvo: [W/2, 250, 0],    fov: 84 },
+  cima:    { pos: [W*1.35, H*3.2, -900], alvo: [W/2, 0, D*0.55], fov: 70 },
+};
+
+const sub = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const dot = (a,b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const cross = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const norm = a => { const l = Math.hypot(a[0],a[1],a[2]) || 1; return [a[0]/l, a[1]/l, a[2]/l]; };
+
+// ------------------------------------------------------------------ WebGL2
+const cv = document.getElementById("gl");
+const gl = cv.getContext("webgl2", { antialias: true, alpha: false, powerPreference: "high-performance" });
+const aviso = document.getElementById("aviso"), avisoTxt = document.getElementById("avisoTxt");
+function falha(msg) { aviso.classList.remove("oculto"); aviso.querySelector("b").textContent = "Não deu para abrir a sala"; avisoTxt.textContent = msg; throw new Error(msg); }
+if (!gl) falha("Este navegador não tem WebGL2. Abra no Chrome ou no Edge.");
+
+const VS = `#version 300 es
+in vec3 aPos; in vec2 aLoc;
+uniform vec3 uCam, uF, uR, uU; uniform vec2 uFoc; uniform float uNear, uFar;
+out vec2 vLoc;
+void main() {
+  vec3 d = aPos - uCam;
+  float x = dot(d, uR), y = dot(d, uU), z = dot(d, uF);
+  gl_Position = vec4(x * uFoc.x, y * uFoc.y, (z * (uFar + uNear) - 2.0 * uFar * uNear) / (uFar - uNear), z);
+  vLoc = aLoc;
+}`;
+// mesmo mapeamento de prova.py mapa_vista: (uu, vv) da superfície -> (cx, cy) na cruz cheia; meio texel de folga
+const FS = `#version 300 es
+precision highp float;
+in vec2 vLoc; out vec4 cor;
+uniform sampler2D uTex; uniform int uSup; uniform vec2 uT; uniform float uMeia; uniform float uTemVideo;
+const float A = 720.0, L = 3024.0, C = 1920.0;
+void main() {
+  if (uSup == 5) { cor = vec4(vec3(18.0 / 255.0), 1.0); return; }
+  vec2 q = clamp(vLoc, vec2(uMeia), uT - vec2(uMeia));
+  float uu = q.x, vv = q.y; vec2 c;
+  if (uSup == 0)      c = vec2(A + uu, vv);
+  else if (uSup == 1) c = vec2(A + (L - uu), A + C + (A - vv));
+  else if (uSup == 2) c = vec2(vv, A + (C - uu));
+  else if (uSup == 3) c = vec2(A + L + (A - vv), A + uu);
+  else                c = vec2(A + uu, A + vv);
+  vec3 t = texture(uTex, c / vec2(${CRUZ_W}.0, ${CRUZ_H}.0)).rgb;
+  cor = vec4(mix(vec3(0.0), t, uTemVideo), 1.0);
+}`;
+function shader(tipo, src) {
+  const s = gl.createShader(tipo); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) falha("shader: " + gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) falha("programa: " + gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const U = {};
+for (const n of ["uCam","uF","uR","uU","uFoc","uNear","uFar","uTex","uSup","uT","uMeia","uTemVideo"]) U[n] = gl.getUniformLocation(prog, n);
+
+// um quad por superfície: posição (x,y,z) + coordenada local (uu, vv) em pixels da superfície
+const dados = [], faixas = [];
+for (const s of SUP) {
+  const loc = [[0,0],[s.tw,0],[s.tw,s.th],[0,s.th]];
+  const ini = dados.length / 5;
+  for (const i of [0,1,2, 0,2,3]) dados.push(...s.c[i], ...loc[i]);
+  faixas.push(ini);
+}
+const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+const vbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(dados), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, "aPos"), aLoc = gl.getAttribLocation(prog, "aLoc");
+gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 20, 0);
+gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 20, 12);
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);  // linha 0 do vídeo = topo da cruz, como no cv2
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+gl.clearColor(0, 0, 0, 1);
+
+// ------------------------------------------------------------------ câmera
+const cam = { pos: [0,0,0], yaw: 0, pitch: 0, fov: 90 };
+function base() {
+  const cp = Math.cos(cam.pitch);
+  const f = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), Math.cos(cam.yaw) * cp];
+  const r = norm(cross([0,1,0], f));
+  return { f, r, u: cross(f, r) };
+}
+let vistaAtual = null;
+function irPara(nome) {
+  const v = VISTAS[nome]; const f = norm(sub(v.alvo, v.pos));
+  cam.pos = v.pos.slice(); cam.yaw = Math.atan2(f[0], f[2]); cam.pitch = Math.asin(f[1]); cam.fov = v.fov;
+  vistaAtual = nome; marcarVista();
+}
+function marcarVista() {
+  document.querySelectorAll("[data-vista]").forEach(b => b.classList.toggle("ativo", b.dataset.vista === vistaAtual));
+}
+const dentro = p => p[0] > 0 && p[0] < W && p[1] > 0 && p[1] < H && p[2] > 0 && p[2] < D;
+const MARGEM = 20;
+function mover(dx, dy, dz) {
+  const estava = dentro(cam.pos);
+  const p = [cam.pos[0] + dx, cam.pos[1] + dy, cam.pos[2] + dz];
+  if (estava) {  // quem está dentro não atravessa parede
+    p[0] = Math.min(W - MARGEM, Math.max(MARGEM, p[0]));
+    p[1] = Math.min(H - MARGEM, Math.max(MARGEM, p[1]));
+    p[2] = Math.min(D - MARGEM, Math.max(MARGEM, p[2]));
+  }
+  cam.pos = p;
+  if (dx || dy || dz) { vistaAtual = null; marcarVista(); }
+}
+
+// ------------------------------------------------------------------ vídeo embutido
+const video = document.createElement("video");
+video.muted = true; video.loop = true; video.playsInline = true; video.preload = "auto";
+let temQuadro = false, quadroNovo = false, texW = 0;
+function b64ParaBlob(b64, tipo) {
+  const bin = atob(b64), n = bin.length, buf = new Uint8Array(n);
+  for (let i = 0; i < n; i++) buf[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type: tipo });
+}
+function carregarVideo() {
+  const el = document.getElementById("video64");
+  if (META.video) {  // versão web: vídeo em arquivo ao lado da página (mesma origem), carrega aos poucos
+    video.src = META.video;
+  } else {
+    const b64 = el.textContent.replace(/\s+/g, "");
+    if (!b64 || b64.startsWith("__")) falha("Esta página é o modelo, sem vídeo. Gere com provas/sala_app.py.");
+    video.src = URL.createObjectURL(b64ParaBlob(b64, "video/mp4"));
+  }
+  el.textContent = "";  // libera a cópia em texto
+  video.addEventListener("loadeddata", () => {
+    aviso.classList.add("oculto");
+    texW = video.videoWidth;
+    if (META.som) document.getElementById("bSom").classList.remove("oculto");
+    video.play().catch(() => { atualizarPlay(); });
+  }, { once: true });
+  video.addEventListener("error", () => falha("O navegador não conseguiu tocar o vídeo embutido (" + (video.error && video.error.code) + ")."));
+  if ("requestVideoFrameCallback" in video) {
+    const cb = () => { quadroNovo = true; video.requestVideoFrameCallback(cb); };
+    video.requestVideoFrameCallback(cb);
+  }
+  video.addEventListener("seeked", () => { quadroNovo = true; });
+}
+function subirQuadro() {
+  if (video.readyState < 2) return;
+  if (!("requestVideoFrameCallback" in video)) quadroNovo = true;
+  if (!quadroNovo) return;
+  quadroNovo = false;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+  temQuadro = true;
+}
+
+// ------------------------------------------------------------------ desenho
+const rotulos = {};
+for (const s of SUP) {
+  if (s.nome === "TETO") continue;
+  const el = document.createElement("div"); el.className = "rotulo"; el.textContent = s.nome;
+  el.style.color = s.cor; document.body.appendChild(el); rotulos[s.nome] = el;
+}
+let mostrarNomes = false;
+function redimensionar() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+}
+function desenhar() {
+  redimensionar();
+  gl.viewport(0, 0, cv.width, cv.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  const { f, r, u } = base();
+  // campo de visão vale na horizontal (como na prova); com a tela em pé (celular), vale na vertical
+  const asp = cv.width / cv.height, k = 1 / Math.tan(cam.fov * Math.PI / 360);
+  const focX = asp >= 1 ? k : k / asp, focY = asp >= 1 ? k * asp : k;
+  gl.uniform3fv(U.uCam, cam.pos); gl.uniform3fv(U.uF, f); gl.uniform3fv(U.uR, r); gl.uniform3fv(U.uU, u);
+  gl.uniform2f(U.uFoc, focX, focY); gl.uniform1f(U.uNear, 1); gl.uniform1f(U.uFar, 40000);
+  gl.uniform1i(U.uTex, 0); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform1f(U.uTemVideo, temQuadro ? 1 : 0);
+  // escala da textura em relação à cruz cheia: meio texel de folga, como o prova.py (meia = 0,5 / s)
+  const s = texW ? texW / CRUZ_W : 1;
+  gl.uniform1f(U.uMeia, 0.5 / s);
+  SUP.forEach((sp, i) => {
+    // como o raio da prova: só a face cujo lado de dentro vê a câmera (de fora, a parede da frente some)
+    const vis = dot(sub(cam.pos, sp.c[0]), sp.n) > 0;
+    sp.visivel = vis;
+    if (!vis) return;
+    gl.uniform1i(U.uSup, sp.id); gl.uniform2f(U.uT, sp.tw, sp.th);
+    gl.drawArrays(gl.TRIANGLES, faixas[i], 6);
+  });
+  // nomes no centro de cada superfície
+  for (const sp of SUP) {
+    const el = rotulos[sp.nome]; if (!el) continue;
+    if (!mostrarNomes || !sp.visivel) { el.style.display = "none"; continue; }
+    const c = [0,1,2].map(k => (sp.c[0][k] + sp.c[2][k]) / 2);
+    if (sp.nome !== "PISO") c[1] = H * 0.5;
+    const d = sub(c, cam.pos), z = dot(d, f);
+    if (z <= 1) { el.style.display = "none"; continue; }
+    const x = cv.clientWidth / 2 + (cv.clientWidth / 2) * focX * dot(d, r) / z;
+    const y = cv.clientHeight / 2 - (cv.clientWidth / 2) * focX * dot(d, u) / z;
+    el.style.display = "block"; el.style.left = x + "px"; el.style.top = y + "px";
+  }
+  desenharMapa(f);
+}
+
+// mini mapa: o piso visto de cima, na orientação da cruz (cima = AZUL, direita = CIANO, baixo = AMARELA, esquerda = ROXA)
+const mapa = document.getElementById("mapa"), mc = mapa.getContext("2d");
+function desenharMapa(f) {
+  const Wm = mapa.width, Hm = mapa.height, pad = 34, esp = 12;
+  const esc = Math.min((Wm - 2 * pad) / LONGA, (Hm - 2 * pad) / CURTA);
+  const ox = (Wm - LONGA * esc) / 2, oy = (Hm - CURTA * esc) / 2;
+  const P = (x, z) => [ox + (D - z) * esc, oy + (W - x) * esc];  // piso: u = D - z, v = W - x
+  mc.clearRect(0, 0, Wm, Hm);
+  mc.fillStyle = "#0b0b0d"; mc.fillRect(ox, oy, LONGA * esc, CURTA * esc);
+  const cores = Object.fromEntries(SUP.map(s => [s.nome, s.cor]));
+  mc.fillStyle = cores.AZUL; mc.fillRect(ox, oy - esp, LONGA * esc, esp);
+  mc.fillStyle = cores.AMARELA; mc.fillRect(ox, oy + CURTA * esc, LONGA * esc, esp);
+  mc.fillStyle = cores.ROXA; mc.fillRect(ox - esp, oy, esp, CURTA * esc);
+  mc.fillStyle = cores.CIANO; mc.fillRect(ox + LONGA * esc, oy, esp, CURTA * esc);
+  mc.font = "600 20px Segoe UI, sans-serif"; mc.textAlign = "center"; mc.textBaseline = "middle"; mc.fillStyle = "#cfcfd6";
+  mc.fillText("ROXA · frente", ox + LONGA * esc / 2, Hm - 12);
+  // câmera e cone de visão
+  const [cx, cy] = P(cam.pos[0], cam.pos[2]);
+  const ang = Math.atan2(-f[0], -f[2]);  // direção na tela do mapa: dx = -fz, dy = -fx
+  const meio = Math.min(cam.fov, 120) * Math.PI / 360, raio = 70;
+  mc.save(); mc.beginPath(); mc.rect(0, 0, Wm, Hm); mc.clip();
+  mc.fillStyle = "rgba(231,181,74,.25)"; mc.beginPath(); mc.moveTo(cx, cy);
+  mc.arc(cx, cy, raio, ang - meio, ang + meio); mc.closePath(); mc.fill();
+  mc.restore();
+  mc.fillStyle = "#e7b54a"; mc.beginPath(); mc.arc(Math.max(4, Math.min(Wm - 4, cx)), Math.max(4, Math.min(Hm - 4, cy)), 7, 0, Math.PI * 2); mc.fill();
+}
+
+// ------------------------------------------------------------------ controles
+const teclas = new Set();
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") { if (e.code !== "Space") return; }
+  const k = e.code;
+  if (k === "Space") { e.preventDefault(); alternarPlay(); return; }
+  if (k === "Digit1") return irPara("publico");
+  if (k === "Digit2") return irPara("frente");
+  if (k === "Digit3") return irPara("costas");
+  if (k === "Digit4") return irPara("cima");
+  if (k === "KeyG") return alternarNomes();
+  if (k === "KeyF") return telaCheia();
+  if (k === "KeyH") return document.getElementById("ajuda").classList.toggle("oculto");
+  if (k === "Comma") return passo(-1);
+  if (k === "Period") return passo(1);
+  if (k.startsWith("Arrow")) e.preventDefault();
+  teclas.add(k);
+});
+addEventListener("keyup", e => teclas.delete(e.code));
+addEventListener("blur", () => teclas.clear());
+
+const toques = new Map();
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); toques.set(e.pointerId, [e.clientX, e.clientY]); cv.classList.add("arrastando"); });
+cv.addEventListener("pointermove", e => {
+  if (!toques.has(e.pointerId)) return;
+  const [x0, y0] = toques.get(e.pointerId); const dx = e.clientX - x0, dy = e.clientY - y0;
+  toques.set(e.pointerId, [e.clientX, e.clientY]);
+  const graus = cam.fov / cv.clientWidth;  // arrastar a largura da tela gira o próprio campo de visão
+  if (toques.size >= 2) {  // dois dedos: andar
+    const { f, r } = base(); const fh = norm([f[0], 0, f[2]]), rh = norm([r[0], 0, r[2]]);
+    const k = 3; mover((-dy * fh[0] + dx * rh[0]) * k / toques.size, 0, (-dy * fh[2] + dx * rh[2]) * k / toques.size);
+    return;
+  }
+  cam.yaw += dx * graus * Math.PI / 180;
+  cam.pitch = Math.max(-1.55, Math.min(1.55, cam.pitch - dy * graus * Math.PI / 180));
+  vistaAtual = null; marcarVista();
+});
+const soltar = e => { toques.delete(e.pointerId); if (!toques.size) cv.classList.remove("arrastando"); };
+cv.addEventListener("pointerup", soltar); cv.addEventListener("pointercancel", soltar);
+cv.addEventListener("wheel", e => { e.preventDefault(); cam.fov = Math.max(25, Math.min(120, cam.fov * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+document.querySelectorAll("[data-vista]").forEach(b => b.addEventListener("click", () => irPara(b.dataset.vista)));
+const bNomes = document.getElementById("bNomes");
+function alternarNomes() { mostrarNomes = !mostrarNomes; bNomes.classList.toggle("ativo", mostrarNomes); }
+bNomes.addEventListener("click", alternarNomes);
+function telaCheia() { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
+document.getElementById("bTela").addEventListener("click", telaCheia);
+
+// vídeo: play, tempo, quadro a quadro, velocidade, som
+const bPlay = document.getElementById("bPlay"), linha = document.getElementById("linha"), tempo = document.getElementById("tempo");
+const fps = META.fps || 30;
+function atualizarPlay() { bPlay.textContent = video.paused ? "▶" : "❚❚"; }
+function alternarPlay() { if (video.paused) video.play(); else video.pause(); }
+video.addEventListener("play", atualizarPlay); video.addEventListener("pause", atualizarPlay);
+bPlay.addEventListener("click", alternarPlay);
+function passo(n) { video.pause(); const q = Math.round(video.currentTime * fps) + n; video.currentTime = Math.max(0, Math.min(video.duration - 1 / fps, (q + 0.5) / fps)); }
+document.getElementById("bAnt").addEventListener("click", () => passo(-1));
+document.getElementById("bProx").addEventListener("click", () => passo(1));
+let arrastandoLinha = false;
+linha.addEventListener("input", () => { arrastandoLinha = true; if (video.duration) video.currentTime = linha.value / 1000 * video.duration; });
+linha.addEventListener("change", () => { arrastandoLinha = false; });
+document.getElementById("vel").addEventListener("change", e => { video.playbackRate = +e.target.value; });
+const bSom = document.getElementById("bSom");
+bSom.addEventListener("click", () => { video.muted = !video.muted; bSom.classList.toggle("ativo", !video.muted); });
+const fmt = t => { t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = t - m * 60; return String(m).padStart(2, "0") + ":" + s.toFixed(2).padStart(5, "0"); };
+
+// ------------------------------------------------------------------ laço
+let antes = performance.now();
+function quadro(agora) {
+  const dt = Math.min(0.1, (agora - antes) / 1000); antes = agora;
+  const { f, r } = base(); const fh = norm([f[0], 0, f[2]]), rh = norm([r[0], 0, r[2]]);
+  const vel = (teclas.has("ShiftLeft") || teclas.has("ShiftRight") ? 1800 : 600) * dt;
+  let a = 0, l = 0, y = 0;
+  if (teclas.has("KeyW") || teclas.has("ArrowUp")) a += 1;
+  if (teclas.has("KeyS") || teclas.has("ArrowDown")) a -= 1;
+  if (teclas.has("KeyD") || teclas.has("ArrowRight")) l += 1;
+  if (teclas.has("KeyA") || teclas.has("ArrowLeft")) l -= 1;
+  if (teclas.has("KeyE")) y += 1;
+  if (teclas.has("KeyQ")) y -= 1;
+  if (a || l || y) mover((a * fh[0] + l * rh[0]) * vel, y * vel * 0.5, (a * fh[2] + l * rh[2]) * vel);
+  subirQuadro();
+  desenhar();
+  if (video.duration) {
+    if (!arrastandoLinha) linha.value = Math.round(video.currentTime / video.duration * 1000);
+    tempo.textContent = fmt(video.currentTime) + " / " + fmt(video.duration);
+  }
+  requestAnimationFrame(quadro);
+}
+
+document.getElementById("origem").textContent = META.origem || "";
+const dica = document.getElementById("dica");
+const esconderDica = () => { dica.style.opacity = "0"; };
+setTimeout(esconderDica, 7000); cv.addEventListener("pointerdown", () => setTimeout(esconderDica, 1500), { once: true });
+irPara("publico");
+setTimeout(() => { try { carregarVideo(); } catch (e) { console.error(e); } }, 30);
+requestAnimationFrame(quadro);
+</script>
+</body>
+</html>
