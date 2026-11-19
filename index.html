@@ -37,12 +37,9 @@
   body.abrindo #topo, body.abrindo #dica, body.abrindo #barra, body.abrindo #mapa, body.abrindo #ajuda,
   body.abrindo #pilulaSom { opacity:0; pointer-events:none; }
   body.abrindo #topo *, body.abrindo #barra * { pointer-events:none; }
-  /* interface que some com o filme tocando (computador: 3 s sem mexer o mouse; celular: 4 s sem toque), com o cursor
-     junto; a ajuda acesa pelo H (.fixa) fica até outro H */
-  body.uiOculta #topo, body.uiOculta #barra, body.uiOculta #dica, body.uiOculta #mapa,
-  body.uiOculta #ajuda:not(.fixa) { opacity:0; pointer-events:none; }
+  /* celular: a interface some depois de 4 s sem toque, e o primeiro toque só a traz de volta */
+  body.uiOculta #topo, body.uiOculta #barra, body.uiOculta #dica { opacity:0; pointer-events:none; }
   body.uiOculta #topo *, body.uiOculta #barra * { pointer-events:none; }
-  body.uiOculta, body.uiOculta canvas#gl { cursor:none; }
   #titulo { padding:8px 12px; pointer-events:auto; max-width:min(60vw, 720px); }
   #titulo b { font-weight:600; }
   #titulo small { display:block; color:var(--fraco); }
@@ -65,7 +62,7 @@
     #bSom span, #bTela span, #tTotal, #bNomes { display:none; }
     #bTela svg { display:block; margin:auto; }
   }
-  #mapa { position:fixed; right:calc(12px + var(--sr)); bottom:calc(68px + var(--sb)); width:160px; height:128px; padding:0;
+  #mapa { position:fixed; right:calc(12px + var(--sr)); bottom:calc(68px + var(--sb)); width:230px; height:184px; padding:0;
     transition:opacity .6s ease; }
   #ajuda { position:fixed; left:calc(12px + var(--sl)); bottom:calc(68px + var(--sb)); padding:10px 12px; color:var(--fraco);
     max-width:330px; transition:opacity .8s; }
@@ -108,13 +105,13 @@
 
   /* cartão de abertura, sobre a sala escurecida: o nome da obra em cima, o crédito abaixo. O filme espera parado no
      quadro 0 e só começa quando o cartão sai (o crédito não come o começo da obra). */
-  #abertura { --lw:clamp(160px, 22vmin, 260px); position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
+  #abertura { --lw:clamp(200px, 30vmin, 360px); position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
     align-items:center; justify-content:center; text-align:center; background:rgba(0,0,0,.8);
     padding:calc(24px + var(--st)) calc(24px + var(--sr)) calc(24px + var(--sb)) calc(24px + var(--sl));
     transition:opacity .7s ease; }
   #abertura.saindo { opacity:0; pointer-events:none; }
   #abertura.tocavel { cursor:pointer; }
-  #aTitulo { font-size:clamp(28px, 3vmin, 32px); font-weight:600; color:#fff; max-width:min(90vw, 560px); text-wrap:balance;
+  #aTitulo { font-size:20px; font-weight:600; color:#fff; max-width:min(90vw, 560px); text-wrap:balance;
     margin-bottom:calc(var(--lw) * .16); }
   #abertura .cred { display:flex; flex-direction:column; align-items:center; }
   #abertura .cred-por { font-size:max(10px, calc(var(--lw) * .042)); margin-bottom:calc(var(--lw) * .07); }
@@ -142,7 +139,7 @@
   @media (max-width: 760px), (max-height: 480px) {
     #abertura { --lw:clamp(140px, 38vmin, 180px);
       padding:calc(16px + var(--st)) calc(16px + var(--sr)) calc(16px + var(--sb)) calc(16px + var(--sl)); }
-    #aTitulo { font-size:20px; }  /* mesma proporção título/logo do computador (~0,13); 28 px quebraria em 2 linhas em 390 px */
+    #aTitulo { font-size:18px; }
     #ajuda, #mapa, #bAnt, #bProx, #vel { display:none; }
     #dica { display:block; }
     #topo { gap:6px; }
@@ -177,10 +174,6 @@
     #vistas button, #barra button, #barra select { min-height:44px; min-width:44px; }
     #linha { height:44px; }
   }
-  /* movimento reduzido: a interface, a pílula e o cartão aparecem e somem sem esmaecer */
-  @media (prefers-reduced-motion: reduce) {
-    #topo, #barra, #mapa, #ajuda, #dica, #pilulaSom, #abertura { transition:none; }
-  }
 </style>
 </head>
 <body class="abrindo">
@@ -214,7 +207,7 @@
   <div><kbd>G</kbd> nomes · <kbd>F</kbd> tela cheia · <kbd>H</kbd> esconde esta ajuda</div>
 </div>
 
-<canvas id="mapa" class="painel" width="320" height="256"></canvas>
+<canvas id="mapa" class="painel" width="460" height="368"></canvas>
 
 <div id="barra" class="painel">
   <button id="bPlay" title="Espaço">▶</button>
@@ -470,12 +463,11 @@ const emPe = () => innerHeight > innerWidth;
 const PUBLICO_EM_PE = { pitch: -15, fov: 75 };
 // tela deitada (computador, celular deitado): o campo de 90° vale na horizontal, e o olhar reto deixava um terço da tela
 // no teto cinza, com o piso escondido atrás da barra. O olhar desce o bastante para a emenda parede-piso cair a 55% da
-// altura (piso bem acima da barra), mais baixo se ainda sobrar mais de 12% de teto (janela quase quadrada, campo
-// vertical grande: em 1024x1024 o limite antigo de 20% e -18° deixava 22% de teto), e nunca a ponto de cortar o alto da
-// parede da frente (que fica a pelo menos 4% do topo); entre -8° e -27° (1024x1024 pede -26,5°). Medido no meio da
-// tela, onde a emenda e o alto da parede são linhas retas: um ponto à elevação e aparece em
+// altura (piso bem acima da barra), mais baixo se ainda sobrar mais de 20% de teto (janela quase quadrada, campo
+// vertical grande), e nunca a ponto de cortar o alto da parede da frente (que fica a pelo menos 4% do topo); entre
+// -8° e -18°. Medido no meio da tela, onde a emenda e o alto da parede são linhas retas: um ponto à elevação e aparece em
 // y = tan(e - pitch) / tan(meio campo vertical).
-const PUBLICO_DEITADO = { emenda: -0.10, teto: 0.76, alto: 0.92, min: -27, max: -8 };
+const PUBLICO_DEITADO = { emenda: -0.10, teto: 0.60, alto: 0.92, min: -18, max: -8 };
 function pitchPublico(fov) {
   const v = VISTAS.publico, dz = v.alvo[2] - v.pos[2], P = PUBLICO_DEITADO;
   const eAlto = Math.atan2(H - v.pos[1], dz), ePiso = Math.atan2(-v.pos[1], dz);
@@ -657,11 +649,10 @@ function soltarFilme() {  // o filme começa junto com a saída do cartão
   const sair = () => {
     if (!abriu) return;
     abertura.classList.add("saindo"); document.body.classList.remove("abrindo");
-    contarAjuda();  // a ajuda apaga 10 s depois de o filme começar
     setTimeout(() => {
       if (!abriu || !abertura.classList.contains("saindo")) return;
       abertura.classList.add("oculto");
-      interfaceViva();  // conta os 3 s (celular: 4 s) a partir daqui
+      interfaceViva();  // no celular, conta os 4 s a partir daqui
       if (!dicaMostrada) { dicaMostrada = true; mostrarDica(); }
       if (META.som && video.muted && !CELULAR) mostrarPilula();
     }, 750);
@@ -718,46 +709,12 @@ for (const s of SUP) {
   el.style.color = INTERNO ? s.cor : "#e9e9ec"; document.body.appendChild(el); rotulos[s.nome] = el;
 }
 let mostrarNomes = false;
-// nome de cada superfície no centro da parte dela que aparece na tela: a superfície é recortada pelo plano perto da
-// câmera e pelas bordas da tela, e o nome vai no centro de área do que sobra (some se sobrar menos de 0,5% da tela).
-// O centro geométrico não servia: na vista do público o meio das paredes Esquerda e Direita fica a 90° do olhar e o do
-// piso fica embaixo da câmera, os três fora do campo de visão.
-const PERTO = 1, NOME_AREA_MIN = 0.005;
-const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-function recortar(pol, dist) {  // Sutherland–Hodgman: fica o lado em que dist >= 0
-  const out = [];
-  for (let i = 0; i < pol.length; i++) {
-    const a = pol[i], b = pol[(i + 1) % pol.length], da = dist(a), db = dist(b);
-    if (da >= 0) out.push(a);
-    if ((da >= 0) !== (db >= 0)) out.push(lerp(a, b, da / (da - db)));
-  }
-  return out;
-}
-function centroVisivel(sp, f, r, u, esc, cw, ch) {  // esc: px de tela por unidade de x/z (e de y/z)
-  let pol = sp.c.map(p => { const d = sub(p, cam.pos); return [dot(d, r), dot(d, u), dot(d, f)]; });
-  pol = recortar(pol, p => p[2] - PERTO);
-  let tela = pol.map(p => [cw / 2 + esc * p[0] / p[2], ch / 2 - esc * p[1] / p[2]]);
-  for (const [e, lim, sinal] of [[0, 0, 1], [0, cw, -1], [1, 0, 1], [1, ch, -1]])
-    tela = recortar(tela, p => (p[e] - lim) * sinal);
-  if (tela.length < 3) return null;
-  let A = 0, cx = 0, cy = 0;
-  for (let i = 0; i < tela.length; i++) {
-    const [x0, y0] = tela[i], [x1, y1] = tela[(i + 1) % tela.length], k = x0 * y1 - x1 * y0;
-    A += k; cx += (x0 + x1) * k; cy += (y0 + y1) * k;
-  }
-  if (Math.abs(A) / 2 < NOME_AREA_MIN * cw * ch) return null;
-  return [cx / (3 * A), cy / (3 * A)];
-}
-// luz da sala: 0 com um cartão na frente (atrás dele, preto puro, sem o trapézio do teto) ou sem quadro do vídeo; 1 com
-// a sala aberta. Acende junto com a saída do cartão (0,7 s); com movimento reduzido, na hora
-let luz = 0;
-const movReduzido = matchMedia("(prefers-reduced-motion: reduce)");
 function redimensionar() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
 }
-function desenhar(dt) {
+function desenhar() {
   redimensionar();
   gl.viewport(0, 0, cv.width, cv.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -768,9 +725,7 @@ function desenhar(dt) {
   gl.uniform3fv(U.uCam, cam.pos); gl.uniform3fv(U.uF, f); gl.uniform3fv(U.uR, r); gl.uniform3fv(U.uU, u);
   gl.uniform2f(U.uFoc, focX, focY); gl.uniform1f(U.uNear, 1); gl.uniform1f(U.uFar, 40000);
   gl.uniform1i(U.uTex, 0); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tex);
-  const alvoLuz = temQuadro && abertura.classList.contains("saindo") ? 1 : 0;
-  luz = alvoLuz <= luz || movReduzido.matches ? alvoLuz : Math.min(alvoLuz, luz + dt / 0.7);
-  gl.uniform1f(U.uTemVideo, luz);
+  gl.uniform1f(U.uTemVideo, temQuadro ? 1 : 0);
   // escala da textura em relação à cruz cheia: meio texel de folga, como o prova.py (meia = 0,5 / s)
   const s = texW ? texW / CRUZ_W : 1;
   gl.uniform1f(U.uMeia, 0.5 / s);
@@ -782,30 +737,25 @@ function desenhar(dt) {
     gl.uniform1i(U.uSup, sp.id); gl.uniform2f(U.uT, sp.tw, sp.th);
     gl.drawArrays(gl.TRIANGLES, faixas[i], 6);
   });
-  // nomes no centro da parte visível de cada superfície, inteiros dentro da tela
-  const cw = cv.clientWidth, ch = cv.clientHeight, esc = (cw / 2) * focX;
+  // nomes no centro de cada superfície
   for (const sp of SUP) {
     const el = rotulos[sp.nome]; if (!el) continue;
-    const c = mostrarNomes && sp.visivel ? centroVisivel(sp, f, r, u, esc, cw, ch) : null;
-    if (!c) { el.style.display = "none"; continue; }
-    el.style.display = "block";
-    if (!el.meio) el.meio = [el.offsetWidth / 2 + 4, el.offsetHeight / 2 + 4];  // o texto não muda: mede uma vez
-    el.style.left = Math.max(el.meio[0], Math.min(cw - el.meio[0], c[0])) + "px";
-    el.style.top = Math.max(el.meio[1], Math.min(ch - el.meio[1], c[1])) + "px";
+    if (!mostrarNomes || !sp.visivel) { el.style.display = "none"; continue; }
+    const c = [0,1,2].map(k => (sp.c[0][k] + sp.c[2][k]) / 2);
+    if (sp.nome !== "PISO") c[1] = H * 0.5;
+    const d = sub(c, cam.pos), z = dot(d, f);
+    if (z <= 1) { el.style.display = "none"; continue; }
+    const x = cv.clientWidth / 2 + (cv.clientWidth / 2) * focX * dot(d, r) / z;
+    const y = cv.clientHeight / 2 - (cv.clientWidth / 2) * focX * dot(d, u) / z;
+    el.style.display = "block"; el.style.left = x + "px"; el.style.top = y + "px";
   }
   desenharMapa(f);
 }
 
 // mini mapa: o piso visto de cima, na orientação da cruz (cima = AZUL, direita = CIANO, baixo = AMARELA, esquerda = ROXA)
-// Desenhado em px CSS (160x128, o tamanho do #mapa), na densidade da tela, para o texto ficar nítido no tamanho pequeno.
 const mapa = document.getElementById("mapa"), mc = mapa.getContext("2d");
-const MAPA_W = 160, MAPA_H = 128;
 function desenharMapa(f) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const wpx = Math.round(MAPA_W * dpr), hpx = Math.round(MAPA_H * dpr);
-  if (mapa.width !== wpx || mapa.height !== hpx) { mapa.width = wpx; mapa.height = hpx; }
-  mc.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const Wm = MAPA_W, Hm = MAPA_H, pad = 18, esp = 5;
+  const Wm = mapa.width, Hm = mapa.height, pad = 34, esp = 12;
   const esc = Math.min((Wm - 2 * pad) / LONGA, (Hm - 2 * pad) / CURTA);
   const ox = (Wm - LONGA * esc) / 2, oy = (Hm - CURTA * esc) / 2;
   const P = (x, z) => [ox + (D - z) * esc, oy + (W - x) * esc];  // piso: u = D - z, v = W - x
@@ -818,22 +768,21 @@ function desenharMapa(f) {
   mc.fillStyle = cores.AMARELA; mc.fillRect(ox, oy + CURTA * esc, LONGA * esc, esp);
   mc.fillStyle = cores.ROXA; mc.fillRect(ox - esp, oy, esp, CURTA * esc);
   mc.fillStyle = cores.CIANO; mc.fillRect(ox + LONGA * esc, oy, esp, CURTA * esc);
-  mc.font = "600 11px Segoe UI, system-ui, -apple-system, sans-serif"; mc.textAlign = "center"; mc.textBaseline = "middle";
-  mc.fillStyle = "#cfcfd6";
-  if (INTERNO) mc.fillText("ROXA · frente", ox + LONGA * esc / 2, Hm - 7);
+  mc.font = "600 20px Segoe UI, sans-serif"; mc.textAlign = "center"; mc.textBaseline = "middle"; mc.fillStyle = "#cfcfd6";
+  if (INTERNO) mc.fillText("ROXA · frente", ox + LONGA * esc / 2, Hm - 12);
   else {  // "frente" de pé, junto da parede da frente
-    mc.save(); mc.translate(ox - esp - 7, oy + CURTA * esc / 2); mc.rotate(-Math.PI / 2);
+    mc.save(); mc.translate(ox - esp - 11, oy + CURTA * esc / 2); mc.rotate(-Math.PI / 2);
     mc.fillStyle = "#e7b54a"; mc.fillText("frente", 0, 0); mc.restore();
   }
   // câmera e cone de visão
   const [cx, cy] = P(cam.pos[0], cam.pos[2]);
   const ang = Math.atan2(-f[0], -f[2]);  // direção na tela do mapa: dx = -fz, dy = -fx
-  const meio = Math.min(fovHorizontal(), 120) * Math.PI / 360, raio = 32;
+  const meio = Math.min(fovHorizontal(), 120) * Math.PI / 360, raio = 70;
   mc.save(); mc.beginPath(); mc.rect(0, 0, Wm, Hm); mc.clip();
   mc.fillStyle = "rgba(231,181,74,.25)"; mc.beginPath(); mc.moveTo(cx, cy);
   mc.arc(cx, cy, raio, ang - meio, ang + meio); mc.closePath(); mc.fill();
   mc.restore();
-  mc.fillStyle = "#e7b54a"; mc.beginPath(); mc.arc(Math.max(4, Math.min(Wm - 4, cx)), Math.max(4, Math.min(Hm - 4, cy)), 3.5, 0, Math.PI * 2); mc.fill();
+  mc.fillStyle = "#e7b54a"; mc.beginPath(); mc.arc(Math.max(4, Math.min(Wm - 4, cx)), Math.max(4, Math.min(Hm - 4, cy)), 7, 0, Math.PI * 2); mc.fill();
 }
 
 // ------------------------------------------------------------------ controles
@@ -849,11 +798,10 @@ addEventListener("keydown", e => {
   if (k === "Digit4") return irPara("cima");
   if (k === "KeyG") return alternarNomes();
   if (k === "KeyF") return telaCheia();
-  if (k === "KeyH") {  // acesa, apaga; apagada (sozinha ou pelo H), acende e fica (.fixa) até outro H
-    clearTimeout(ajudaT); ajudaT = -1;  // quem usou o H decide dali em diante
-    const acesa = !ajuda.classList.contains("apagada") && !ajuda.classList.contains("oculto");
-    ajuda.classList.remove("apagada"); ajuda.classList.toggle("oculto", acesa); ajuda.classList.toggle("fixa", !acesa);
-    return;
+  if (k === "KeyH") {  // apagada sozinha volta acesa; acesa, esconde
+    const aj = document.getElementById("ajuda");
+    if (aj.classList.contains("apagada")) { aj.classList.remove("apagada", "oculto"); return; }
+    return aj.classList.toggle("oculto");
   }
   if (k === "Comma") return passo(-1);
   if (k === "Period") return passo(1);
@@ -863,18 +811,12 @@ addEventListener("keydown", e => {
 addEventListener("keyup", e => teclas.delete(e.code));
 addEventListener("blur", () => teclas.clear());
 
-// ponteiros na sala: último ponto, ponto de partida e se já passou da folga de TOQUE_PX. Um toque curto não gira a sala;
-// passada a folga, o giro conta desde o ponto de partida (o arrasto não perde o começo)
 const toques = new Map();
-cv.addEventListener("pointerdown", e => {
-  cv.setPointerCapture(e.pointerId);
-  toques.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, solto: false });
-  cv.classList.add("arrastando");
-});
+cv.addEventListener("pointerdown", e => { cv.setPointerCapture(e.pointerId); toques.set(e.pointerId, [e.clientX, e.clientY]); cv.classList.add("arrastando"); });
 cv.addEventListener("pointermove", e => {
-  const tq = toques.get(e.pointerId); if (!tq) return;
-  if (!tq.solto) { if (Math.hypot(e.clientX - tq.x0, e.clientY - tq.y0) < TOQUE_PX) return; tq.solto = true; }
-  const dx = e.clientX - tq.x, dy = e.clientY - tq.y; tq.x = e.clientX; tq.y = e.clientY;
+  if (!toques.has(e.pointerId)) return;
+  const [x0, y0] = toques.get(e.pointerId); const dx = e.clientX - x0, dy = e.clientY - y0;
+  toques.set(e.pointerId, [e.clientX, e.clientY]);
   const graus = fovHorizontal() / cv.clientWidth;  // arrastar a largura da tela gira o campo de visão horizontal
   if (toques.size >= 2) {  // dois dedos: andar
     const { f, r } = base(); const fh = norm([f[0], 0, f[2]]), rh = norm([r[0], 0, r[2]]);
@@ -981,7 +923,7 @@ function quadro(agora) {
   if (!perdido) {  // sem contexto WebGL não há o que desenhar; o cartão está na frente
     subirQuadro();
     if (!abriu && tocando && temQuadro) pronto();
-    desenhar(dt);
+    desenhar();
   }
   if (video.duration) {
     if (!arrastandoLinha) linha.value = Math.round(video.currentTime / video.duration * 1000);
@@ -1000,66 +942,37 @@ function mostrarDica() {
   const esconder = () => { dica.style.opacity = "0"; };
   setTimeout(esconder, 7000); cv.addEventListener("pointerdown", () => setTimeout(esconder, 1500), { once: true });
 }
-// ajuda do teclado (computador): apaga sozinha 10 s depois de o filme começar, mexendo ou não, e não volta com o mouse;
-// o H acende e apaga (ver o teclado)
+// ajuda do teclado (computador): some 10 s depois da primeira mexida na sala; H traz de volta
 const ajuda = document.getElementById("ajuda");
-const AJUDA_MS = 10000;
 let ajudaT = 0;
-function contarAjuda() { if (!ajudaT) ajudaT = setTimeout(() => ajuda.classList.add("apagada"), AJUDA_MS); }
-// interface que some, para o filme ocupar a tela: com o filme tocando e a sala aberta, título, vistas, barra, mapa e
-// ajuda somem (com o cursor) depois de 3 s sem mexer o mouse no computador, ou de 4 s sem toque no celular. Não somem
-// com o ponteiro do mouse sobre um controle, com o foco do teclado (Tab) num controle nem com o filme parado (o play
-// está nela); com um cartão na frente nem contam.
-// Computador: mexer o mouse, tecla, roda ou clique trazem de volta. Celular: um toque curto (menos de TOQUE_PX e de
-// TOQUE_MS) só traz de volta (não gira a sala, pela folga do arrasto); um arrasto gira a sala desde o primeiro
-// movimento, esteja ela à vista ou não, e não a traz.
-const UI_MS = CELULAR ? 4000 : 3000, TOQUE_PX = 8, TOQUE_MS = 300;
-let uiT = 0, focoTeclado = false, ultimoPonteiro = "", ultimoMouse = null, toqueIni = null;
+function aposMexer() {
+  if (ajudaT || !abertura.classList.contains("oculto")) return;
+  ajudaT = setTimeout(() => ajuda.classList.add("apagada"), 10000);
+}
+cv.addEventListener("pointerdown", aposMexer);
+addEventListener("keydown", aposMexer);
+// celular: a interface (título, vistas, barra) some depois de 4 s sem toque, para a sala ocupar a tela; o primeiro
+// toque só a traz de volta (não gira a sala nem aperta botão). Com o filme parado ela fica, porque o play está nela.
+const UI_MS = 4000;
+let uiT = 0;
 const salaAberta = () => abertura.classList.contains("oculto");
-const uiOculta = () => document.body.classList.contains("uiOculta");
-const controles = [document.getElementById("topo"), document.getElementById("barra"), mapa, ajuda, pilulaSom];
 function interfaceViva() {
   document.body.classList.remove("uiOculta");
   clearTimeout(uiT);
-  if (salaAberta()) uiT = setTimeout(esconderInterface, UI_MS);
+  if (CELULAR && salaAberta()) uiT = setTimeout(esconderInterface, UI_MS);
 }
 function esconderInterface() {
-  if (!salaAberta()) return;
-  // :hover só vale para o mouse (no toque ele gruda no último botão tocado)
-  const sobre = ultimoPonteiro === "mouse" && controles.some(el => el.matches(":hover"));
-  const foco = focoTeclado && controles.some(el => el.contains(document.activeElement));
-  if (toques.size || video.paused || sobre || foco) { uiT = setTimeout(esconderInterface, UI_MS); return; }
+  if (!CELULAR || !salaAberta()) return;
+  if (toques.size || video.paused) { uiT = setTimeout(esconderInterface, UI_MS); return; }  // arrastando ou parado
   document.body.classList.add("uiOculta");
 }
-addEventListener("keydown", e => { if (e.key === "Tab") focoTeclado = true; if (salaAberta()) interfaceViva(); }, true);
-addEventListener("wheel", () => { if (salaAberta()) interfaceViva(); }, { capture: true, passive: true });
-addEventListener("pointermove", e => {
-  ultimoPonteiro = e.pointerType;
-  if (toqueIni && e.pointerId === toqueIni.id && Math.hypot(e.clientX - toqueIni.x, e.clientY - toqueIni.y) >= TOQUE_PX)
-    toqueIni.longe = true;
-  if (e.pointerType !== "mouse" || !salaAberta()) return;
-  // o Chrome no Windows manda pointermove sem o mouse sair do lugar (ao trocar o cursor, por exemplo): só vale mexer
-  if (ultimoMouse && ultimoMouse[0] === e.screenX && ultimoMouse[1] === e.screenY) return;
-  ultimoMouse = [e.screenX, e.screenY];
+addEventListener("pointerdown", e => {
+  if (!CELULAR || !salaAberta()) return;
+  if (document.body.classList.contains("uiOculta")) { e.stopPropagation(); e.preventDefault(); }  // só acorda
   interfaceViva();
 }, true);
-addEventListener("pointerdown", e => {
-  ultimoPonteiro = e.pointerType; focoTeclado = false;
-  if (!salaAberta()) return;
-  if (e.pointerType === "mouse" || !uiOculta()) { interfaceViva(); return; }
-  toqueIni = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), longe: false };  // decide ao soltar
-}, true);
-function fimToque(e) {
-  if (e.pointerType === "mouse" || !salaAberta()) return;
-  const ini = toqueIni && toqueIni.id === e.pointerId ? toqueIni : null;
-  if (ini) toqueIni = null;
-  if (!uiOculta()) { interfaceViva(); return; }  // à vista: cada toque conta os 4 s de novo
-  if (ini && e.type === "pointerup" && !ini.longe && Math.hypot(e.clientX - ini.x, e.clientY - ini.y) < TOQUE_PX &&
-      performance.now() - ini.t < TOQUE_MS) interfaceViva();
-}
-addEventListener("pointerup", fimToque, true); addEventListener("pointercancel", fimToque, true);
-video.addEventListener("pause", () => { if (salaAberta()) interfaceViva(); });
-video.addEventListener("play", () => { if (salaAberta()) interfaceViva(); });
+addEventListener("pointerup", () => { if (CELULAR && salaAberta() && !document.body.classList.contains("uiOculta")) interfaceViva(); }, true);
+video.addEventListener("pause", () => { if (CELULAR && salaAberta()) interfaceViva(); });
 irPara("publico");
 setTimeout(() => { try { iniciarVideo(); } catch (e) { if (!e.naTela) console.error(e); } }, 30);
 requestAnimationFrame(quadro);
