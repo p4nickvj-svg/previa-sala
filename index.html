@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Conexão Mart Minas &amp; Dom</title>
+<link rel="icon" href="data:,">  <!-- sem pedir /favicon.ico (404 no console) -->
 <!--
   Sala interativa do Mart Minas Conexão (BP V2), um arquivo só, com o vídeo embutido (ou, na versão web, ao lado).
   Modelo: provas/sala_interativa.html. Quem preenche é o provas/sala_app.py, a partir de um vídeo da cruz.
@@ -31,8 +32,14 @@
   .painel { background:var(--painel); border:1px solid var(--linha); border-radius:10px; backdrop-filter:blur(6px); }
   #topo { position:fixed; top:calc(12px + var(--st)); left:calc(12px + var(--sl)); right:calc(12px + var(--sr)); display:flex; gap:10px; align-items:flex-start; pointer-events:none;
     transition:opacity .7s ease; }
-  body.abrindo #topo { opacity:0; }  /* uma marca só na tela durante a abertura: a do cartão */
-  body.abrindo #dica { opacity:0; }  /* a dica é da sala: aparece quando o cartão sai */
+  /* atrás do cartão só a sala: uma marca só na tela (a do cartão), e os controles, o mapa, a ajuda e a dica chegam
+     quando o cartão sai */
+  body.abrindo #topo, body.abrindo #dica, body.abrindo #barra, body.abrindo #mapa, body.abrindo #ajuda,
+  body.abrindo #pilulaSom { opacity:0; pointer-events:none; }
+  body.abrindo #topo *, body.abrindo #barra * { pointer-events:none; }
+  /* celular: a interface some depois de 4 s sem toque, e o primeiro toque só a traz de volta */
+  body.uiOculta #topo, body.uiOculta #barra, body.uiOculta #dica { opacity:0; pointer-events:none; }
+  body.uiOculta #topo *, body.uiOculta #barra * { pointer-events:none; }
   #titulo { padding:8px 12px; pointer-events:auto; max-width:min(60vw, 720px); }
   #titulo b { font-weight:600; }
   #titulo small { display:block; color:var(--fraco); }
@@ -43,13 +50,20 @@
   button.ativo { border-color:var(--ouro); color:var(--ouro); }
   kbd { font:12px ui-monospace, Consolas, monospace; color:var(--fraco); border:1px solid var(--linha); border-radius:4px; padding:0 4px; }
   #barra { position:fixed; left:calc(12px + var(--sl)); right:calc(12px + var(--sr)); bottom:calc(12px + var(--sb));
-    display:flex; gap:8px; align-items:center; padding:8px 10px; }
-  #tempo { font:13px ui-monospace, Consolas, monospace; min-width:150px; text-align:center; color:var(--fraco); }
+    display:flex; gap:8px; align-items:center; padding:8px 10px; transition:opacity .6s ease; }
+  #tempo { font:13px ui-monospace, Consolas, monospace; min-width:112px; text-align:center; color:var(--fraco);
+    white-space:nowrap; }
   #linha { flex:1; accent-color:var(--ouro); min-width:80px; }
   #bSom { display:inline-flex; align-items:center; justify-content:center; gap:6px; flex:none; white-space:nowrap; }
   #bSom svg { width:16px; height:16px; flex:none; }
-  @media (max-width: 360px) { #bSom span { display:none; } }  /* tela estreita: só o ícone, que já mostra o estado */
-  #mapa { position:fixed; right:calc(12px + var(--sr)); bottom:calc(68px + var(--sb)); width:230px; height:184px; padding:0; }
+  #bTela svg { display:none; width:16px; height:16px; }
+  /* tela estreita (até 360 px): o som e a tela cheia só com o ícone, o tempo só com o atual, e as vistas numa linha */
+  @media (max-width: 360px) {
+    #bSom span, #bTela span, #tTotal, #bNomes { display:none; }
+    #bTela svg { display:block; margin:auto; }
+  }
+  #mapa { position:fixed; right:calc(12px + var(--sr)); bottom:calc(68px + var(--sb)); width:230px; height:184px; padding:0;
+    transition:opacity .6s ease; }
   #ajuda { position:fixed; left:calc(12px + var(--sl)); bottom:calc(68px + var(--sb)); padding:10px 12px; color:var(--fraco);
     max-width:330px; transition:opacity .8s; }
   #ajuda.apagada { opacity:0; pointer-events:none; }
@@ -84,7 +98,10 @@
   .cred-mail:hover, .cred-mail:focus-visible { opacity:1; text-decoration:underline; text-underline-offset:3px; }
   /* alvo de toque de 44 px em volta do e-mail, sem mexer no desenho */
   .cred-mail { position:relative; }
-  @media (pointer: coarse) { .cred-mail::after { content:""; position:absolute; inset:-15px -8px; } }
+  @media (pointer: coarse) { #marca .cred-mail::after { content:""; position:absolute; inset:-15px -8px; } }
+  /* no cartão o e-mail é só texto: o convite é "toque em qualquer ponto", e o e-mail fica no meio da tela; clicável,
+     ele roubava o toque de entrar. O e-mail clicável é o do painel. */
+  #abertura .cred-mail { pointer-events:none; -webkit-user-select:none; user-select:none; }
 
   /* cartão de abertura, sobre a sala escurecida: o nome da obra em cima, o crédito abaixo. O filme espera parado no
      quadro 0 e só começa quando o cartão sai (o crédito não come o começo da obra). */
@@ -116,7 +133,6 @@
   #marca .cred-logo { width:84px; aspect-ratio:1078 / 124; object-fit:cover; object-position:top; opacity:.5; }
   #marca .cred-nome span { display:none; }
   #marca .cred-nome b { font-size:12.6px; opacity:.5; }
-  #marca .cred-nome span { font-size:5px; opacity:.5; margin-top:2.5px; }
   #marca .cred-mail { font-size:11.5px; opacity:.62; }
 
   /* celular (em pé ou deitado) e telas baixas */
@@ -136,20 +152,20 @@
     #marca { gap:4px 10px; margin-top:5px; padding-top:5px; }
     #marca .cred-logo { width:64px; }
     #marca .cred-nome b { font-size:9.6px; }
-    #marca .cred-nome span { font-size:4px; margin-top:2px; }
     #marca .cred-mail { font-size:11px; }
   }
-  /* celular em pé: nome da obra e marca lado a lado numa faixa; as vistas numa linha abaixo */
+  /* celular em pé: o nome da obra numa linha só, por cima; abaixo, a data à esquerda e a marca à direita; as vistas
+     numa linha, sem quebra */
   @media (max-width: 600px) and (orientation: portrait) {
     #topo { flex-wrap:wrap; }
     #titulo { flex:1 1 100%; max-width:none; display:grid; grid-template-columns:minmax(0, 1fr) auto; column-gap:12px;
       align-items:center; }
-    #titulo b { grid-column:1; grid-row:1; text-wrap:balance; }
-    #titulo small { grid-column:1; grid-row:2; font-size:12px; }
-    #marca { grid-column:2; grid-row:1 / span 2; flex-direction:column; flex-wrap:nowrap; gap:4px; margin:0;
+    #titulo b { grid-column:1 / -1; grid-row:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #titulo small { grid-column:1; grid-row:2; font-size:12px; white-space:nowrap; }
+    #marca { grid-column:2; grid-row:2; flex-direction:column; flex-wrap:nowrap; gap:3px; margin:5px 0 0;
       padding:0 0 0 12px; border-top:0; border-left:1px solid var(--linha); }
     #marca .cred-mail { font-size:11px; }
-    #vistas { flex:1 1 100%; margin-left:0; justify-content:center; }
+    #vistas { flex:1 1 100%; margin-left:0; justify-content:center; flex-wrap:nowrap; }
     button { padding:5px 7px; font-size:12px; }
   }
   /* tela de toque: atalhos de teclado não servem; todo controle com 44 px de alvo (guia da Apple) */
@@ -177,7 +193,8 @@
     <button data-vista="costas" title="3">Costas</button>
     <button data-vista="cima" title="4">Cima</button>
     <button id="bNomes" title="G">Nomes</button>
-    <button id="bTela" title="F">Tela cheia</button>
+    <button id="bTela" title="F" aria-label="Tela cheia"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
+      stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span>Tela cheia</span></button>
   </div>
 </div>
 
@@ -197,7 +214,7 @@
   <button id="bAnt" title=",">◂</button>
   <button id="bProx" title=".">▸</button>
   <input id="linha" type="range" min="0" max="1000" step="1" value="0">
-  <span id="tempo">00:00.00 / 00:00.00</span>
+  <span id="tempo"><span id="tAtual">00:00</span><span id="tTotal"> / 00:00</span></span>
   <select id="vel" title="velocidade">
     <option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option>
   </select>
@@ -219,7 +236,7 @@
     <span class="cred-por">CREATED BY</span>
     <img class="cred-logo oculto" alt="Mobius Studio">
     <span class="cred-nome oculto"><b>MOBIUS</b><span>STUDIO</span></span>
-    <a class="cred-mail" href="mailto:contato@mobiuss.com.br">contato@mobiuss.com.br</a>
+    <span class="cred-mail">contato@mobiuss.com.br</span>
   </div>
   <div id="estado" aria-live="polite">
     <b id="estadoTit">Carregando a sala…</b><span id="estadoTxt">abrindo o vídeo</span>
@@ -236,15 +253,22 @@
 const ALT = 720, LONGA = 3024, CURTA = 1920, CRUZ_W = 4464, CRUZ_H = 3360;
 const W = CURTA, D = LONGA, H = ALT;
 // cantos c0..c3 (c0->c1 = eixo u, de largura tw; c0->c3 = eixo v, de altura th) e normal para dentro.
+// 'nome' e 'cor' são os do gabarito (provas internas); 'rot' é o nome para o cliente, de quem está no meio da sala
+// olhando a frente (a direita da câmera é +x, a AZUL)
 const SUP = [
-  { nome: "AZUL",    id: 0, c: [[W,H,D],[W,H,0],[W,0,0],[W,0,D]], n: [-1,0,0], tw: LONGA, th: ALT, cor: "#1a3cff" },
-  { nome: "AMARELA", id: 1, c: [[0,H,0],[0,H,D],[0,0,D],[0,0,0]], n: [ 1,0,0], tw: LONGA, th: ALT, cor: "#ffd200" },
-  { nome: "ROXA",    id: 2, c: [[0,H,D],[W,H,D],[W,0,D],[0,0,D]], n: [0,0,-1], tw: CURTA, th: ALT, cor: "#8c2cff" },
-  { nome: "CIANO",   id: 3, c: [[W,H,0],[0,H,0],[0,0,0],[W,0,0]], n: [0,0, 1], tw: CURTA, th: ALT, cor: "#00e5ff" },
-  { nome: "PISO",    id: 4, c: [[W,0,D],[W,0,0],[0,0,0],[0,0,D]], n: [0,1,0],  tw: LONGA, th: CURTA, cor: "#ff00ff" },
-  { nome: "TETO",    id: 5, c: [[0,H,0],[W,H,0],[W,H,D],[0,H,D]], n: [0,-1,0], tw: CURTA, th: LONGA, cor: "#333" },
+  { nome: "AZUL",    rot: "Direita",  id: 0, c: [[W,H,D],[W,H,0],[W,0,0],[W,0,D]], n: [-1,0,0], tw: LONGA, th: ALT, cor: "#1a3cff" },
+  { nome: "AMARELA", rot: "Esquerda", id: 1, c: [[0,H,0],[0,H,D],[0,0,D],[0,0,0]], n: [ 1,0,0], tw: LONGA, th: ALT, cor: "#ffd200" },
+  { nome: "ROXA",    rot: "Frente",   id: 2, c: [[0,H,D],[W,H,D],[W,0,D],[0,0,D]], n: [0,0,-1], tw: CURTA, th: ALT, cor: "#8c2cff" },
+  { nome: "CIANO",   rot: "Fundo",    id: 3, c: [[W,H,0],[0,H,0],[0,0,0],[W,0,0]], n: [0,0, 1], tw: CURTA, th: ALT, cor: "#00e5ff" },
+  { nome: "PISO",    rot: "Piso",     id: 4, c: [[W,0,D],[W,0,0],[0,0,0],[0,0,D]], n: [0,1,0],  tw: LONGA, th: CURTA, cor: "#ff00ff" },
+  { nome: "TETO",    rot: "Teto",     id: 5, c: [[0,H,0],[W,H,0],[W,H,D],[0,H,D]], n: [0,-1,0], tw: CURTA, th: LONGA, cor: "#333" },
 ];
 const META = JSON.parse(document.getElementById("meta").textContent);
+// prova interna (sala_app.py --n/--saida grava o caminho do arquivo no META): nomes e cores do gabarito; versão do
+// cliente (--web/--unico): nomes de quem está na sala
+const INTERNO = !!META.arquivo;
+const CELULAR = /iPhone|iPod|Android.+Mobile/i.test(navigator.userAgent) ||
+  (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 1024);
 const OLHO = META.olho || 0.6;
 // câmeras da prova (prova.py vistas): pos, alvo, fov horizontal
 const VISTAS = {
@@ -270,9 +294,15 @@ function estado(tit, txt, botao, a) {
   bAbrir.textContent = botao || ""; bAbrir.classList.toggle("oculto", !botao);
   acao = botao ? (a || "abrir") : null; abertura.classList.toggle("tocavel", !!acao);
 }
-function mostrarCartao() { abertura.classList.remove("oculto", "saindo"); document.body.classList.add("abrindo"); }
+function mostrarCartao() {
+  abertura.classList.remove("oculto", "saindo"); document.body.classList.add("abrindo");
+  document.body.classList.remove("uiOculta");
+}
+// interrompe o caminho de abertura com a mensagem já na tela; o erro sai marcado, para não sujar o console como falha
+// de código
 function falha(msg, botao, a, tit) {
-  mostrarCartao(); estado(tit || "Não deu para abrir a sala", msg, botao, a); throw new Error(msg);
+  mostrarCartao(); estado(tit || "Não deu para abrir a sala", msg, botao, a);
+  const e = new Error(msg); e.naTela = true; throw e;
 }
 
 // crédito: logo embutido; sem logo (ou se a imagem não abrir), o nome em texto no mesmo estilo
@@ -342,7 +372,7 @@ in vec2 vLoc; out vec4 cor;
 uniform sampler2D uTex; uniform int uSup; uniform vec2 uT; uniform float uMeia; uniform float uTemVideo;
 const float A = 720.0, L = 3024.0, C = 1920.0;
 void main() {
-  if (uSup == 5) { cor = vec4(vec3(18.0 / 255.0), 1.0); return; }
+  if (uSup == 5) { cor = vec4(vec3(18.0 / 255.0) * uTemVideo, 1.0); return; }  // sem vídeo, tudo preto (sem faixa no cartão)
   vec2 q = clamp(vLoc, vec2(uMeia), uT - vec2(uMeia));
   float uu = q.x, vv = q.y; vec2 c;
   if (uSup == 0)      c = vec2(A + uu, vv);
@@ -373,6 +403,21 @@ for (const s of SUP) {
 // em segundo plano) e o devolve
 const U = {};
 let tex = null;
+// textura do vídeo com mipmaps e filtro anisotrópico: o piso e as laterais, vistos de lado, deixam de cintilar.
+// Até o nível 2 (4 texels): mais que isso, as bordas das paredes puxariam o preto dos cantos vazios da cruz.
+// Custo medido (P5, 19/11/2026, 1920x1080, meia cruz 2232x1680): na RTX 4090, subir um quadro do vídeo passa de
+// ~0,3–0,8 ms para ~0,6–1,0 ms (+~0,3 ms, 30 vezes por segundo), o desenho fica em ~0,4 ms e a tela segue em 60 qps,
+// sem quadro acima de 25 ms; na SwiftShader (placa por software, o pior caso) custa ~+35%. Ligado no computador; no
+// celular fica desligado até medir num aparelho de verdade.
+let MIPMAP = !CELULAR;
+const MIPMAP_NIVEIS = 2, ANISO_MAX = 8;
+function filtroTextura() {  // vale para a textura ligada (tex)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, MIPMAP ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, MIPMAP ? MIPMAP_NIVEIS : 0);
+  const an = gl.getExtension("EXT_texture_filter_anisotropic");  // de novo a cada contexto: o objeto antigo morre
+  if (an) gl.texParameterf(gl.TEXTURE_2D, an.TEXTURE_MAX_ANISOTROPY_EXT,
+                           MIPMAP ? Math.min(ANISO_MAX, gl.getParameter(an.MAX_TEXTURE_MAX_ANISOTROPY_EXT)) : 1);
+}
 function iniciarGL() {
   const prog = gl.createProgram();
   gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
@@ -392,7 +437,7 @@ function iniciarGL() {
   gl.enableVertexAttribArray(aLoc); gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 20, 12);
   tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  filtroTextura();
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -416,11 +461,34 @@ let vistaAtual = null;
 // olha 15° para baixo, com 75° de campo: a parede da frente e o piso enchem a tela.
 const emPe = () => innerHeight > innerWidth;
 const PUBLICO_EM_PE = { pitch: -15, fov: 75 };
+// tela deitada (computador, celular deitado): o campo de 90° vale na horizontal, e o olhar reto deixava um terço da tela
+// no teto cinza, com o piso escondido atrás da barra. O olhar desce o bastante para a emenda parede-piso cair a 55% da
+// altura (piso bem acima da barra), mais baixo se ainda sobrar mais de 20% de teto (janela quase quadrada, campo
+// vertical grande), e nunca a ponto de cortar o alto da parede da frente (que fica a pelo menos 4% do topo); entre
+// -8° e -18°. Medido no meio da tela, onde a emenda e o alto da parede são linhas retas: um ponto à elevação e aparece em
+// y = tan(e - pitch) / tan(meio campo vertical).
+const PUBLICO_DEITADO = { emenda: -0.10, teto: 0.60, alto: 0.92, min: -18, max: -8 };
+function pitchPublico(fov) {
+  const v = VISTAS.publico, dz = v.alvo[2] - v.pos[2], P = PUBLICO_DEITADO;
+  const eAlto = Math.atan2(H - v.pos[1], dz), ePiso = Math.atan2(-v.pos[1], dz);
+  const t = Math.tan(fov * Math.PI / 360) * innerHeight / innerWidth;  // tan do meio campo vertical
+  const pPiso = ePiso - Math.atan(P.emenda * t), pTeto = eAlto - Math.atan(P.teto * t), pAlto = eAlto - Math.atan(P.alto * t);
+  const graus = Math.max(pAlto, Math.min(pPiso, pTeto)) * 180 / Math.PI;
+  return Math.max(PUBLICO_DEITADO.min, Math.min(PUBLICO_DEITADO.max, graus)) * Math.PI / 180;
+}
 function irPara(nome) {
   const v = VISTAS[nome]; const f = norm(sub(v.alvo, v.pos));
   cam.pos = v.pos.slice(); cam.yaw = Math.atan2(f[0], f[2]); cam.pitch = Math.asin(f[1]); cam.fov = v.fov;
-  if (nome === "publico" && emPe()) { cam.pitch = PUBLICO_EM_PE.pitch * Math.PI / 180; cam.fov = PUBLICO_EM_PE.fov; }
+  if (nome === "publico") {
+    if (emPe()) { cam.pitch = PUBLICO_EM_PE.pitch * Math.PI / 180; cam.fov = PUBLICO_EM_PE.fov; }
+    else cam.pitch = pitchPublico(cam.fov);
+  }
   vistaAtual = nome; marcarVista();
+}
+// campo de visão horizontal, em graus: o cam.fov vale na horizontal com a tela deitada e na vertical com ela em pé
+function fovHorizontal() {
+  const asp = innerWidth / innerHeight;
+  return asp >= 1 ? cam.fov : 2 * Math.atan(Math.tan(cam.fov * Math.PI / 360) * asp) * 180 / Math.PI;
 }
 // girou o celular parado na vista do público: refaz a vista para a orientação nova
 addEventListener("resize", () => { if (vistaAtual === "publico") irPara("publico"); });
@@ -451,8 +519,6 @@ function mover(dx, dy, dz) {
 // quando o leve dá erro de verdade.
 // Abertura: com o primeiro quadro pronto, o vídeo para no quadro 0 atrás do cartão e só começa quando o cartão sai.
 const LIMITE_MS = 20000, LIMITE_MAX_MS = 120000, ABERTURA_MIN_MS = 2500;
-const CELULAR = /iPhone|iPod|Android.+Mobile/i.test(navigator.userAgent) ||
-  (matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) <= 1024);
 const video = document.createElement("video");
 video.className = "fonte"; video.muted = true; video.defaultMuted = true; video.loop = true; video.playsInline = true;
 video.setAttribute("playsinline", ""); video.setAttribute("muted", ""); video.preload = CELULAR ? "metadata" : "auto";
@@ -522,15 +588,17 @@ function proximaFonte(motivo) {
            "Tentar de novo", "recomecar");
   }
 }
-// um toque (ou clique) em qualquer ponto do cartão vale o botão; no e-mail, abre o e-mail
-abertura.addEventListener("click", e => {
-  if (!acao || e.target.closest(".cred-mail")) return;
+// um toque (ou clique) em qualquer ponto do cartão vale o botão (o e-mail do cartão é só texto)
+abertura.addEventListener("click", () => {
+  if (!acao) return;
   const a = acao;
   if (a === "link") { if (META.link) location.href = META.link; return; }
   if (a === "recarregar") { location.reload(); return; }
-  // no celular o som liga aqui, dentro do toque (o Safari do iPhone só aceita som com gesto); o começo do filme é
-  // silêncio (pico de -50 dB no primeiro 0,1 s), então o instante tocando atrás do cartão não se ouve
-  if (META.som) definirSom(true);
+  // no celular o som liga ao entrar, dentro do toque (o Safari do iPhone só aceita som com gesto); o começo do filme é
+  // silêncio (pico de -50 dB no primeiro 0,1 s), então o instante tocando atrás do cartão não se ouve. Só na entrada e
+  // só se a pessoa ainda não escolheu: "continuar" e "tentar de novo" (depois de perda do WebGL ou de erro) respeitam
+  // o som como ela deixou.
+  if (META.som && CELULAR && a === "abrir" && escolhaSom === null) definirSom(true);
   if (a === "soltar") { estado("Entrando na sala", ""); soltarFilme(); return; }
   if (a === "recomecar") usarFonte(fonteRecomeco);
   estado("Carregando a sala…", "abrindo o vídeo");
@@ -584,6 +652,7 @@ function soltarFilme() {  // o filme começa junto com a saída do cartão
     setTimeout(() => {
       if (!abriu || !abertura.classList.contains("saindo")) return;
       abertura.classList.add("oculto");
+      interfaceViva();  // no celular, conta os 4 s a partir daqui
       if (!dicaMostrada) { dicaMostrada = true; mostrarDica(); }
       if (META.som && video.muted && !CELULAR) mostrarPilula();
     }, 750);
@@ -628,6 +697,7 @@ function subirQuadro() {
   quadroNovo = false;
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+  if (MIPMAP) gl.generateMipmap(gl.TEXTURE_2D);  // só a cada quadro novo do vídeo, não a cada quadro da tela
   texW = video.videoWidth; temQuadro = true;
 }
 
@@ -635,8 +705,8 @@ function subirQuadro() {
 const rotulos = {};
 for (const s of SUP) {
   if (s.nome === "TETO") continue;
-  const el = document.createElement("div"); el.className = "rotulo"; el.textContent = s.nome;
-  el.style.color = s.cor; document.body.appendChild(el); rotulos[s.nome] = el;
+  const el = document.createElement("div"); el.className = "rotulo"; el.textContent = INTERNO ? s.nome : s.rot;
+  el.style.color = INTERNO ? s.cor : "#e9e9ec"; document.body.appendChild(el); rotulos[s.nome] = el;
 }
 let mostrarNomes = false;
 function redimensionar() {
@@ -691,17 +761,23 @@ function desenharMapa(f) {
   const P = (x, z) => [ox + (D - z) * esc, oy + (W - x) * esc];  // piso: u = D - z, v = W - x
   mc.clearRect(0, 0, Wm, Hm);
   mc.fillStyle = "#0b0b0d"; mc.fillRect(ox, oy, LONGA * esc, CURTA * esc);
-  const cores = Object.fromEntries(SUP.map(s => [s.nome, s.cor]));
+  // prova interna: as cores do gabarito; cliente: paredes neutras e a frente em ouro, com o nome ao lado
+  const cores = INTERNO ? Object.fromEntries(SUP.map(s => [s.nome, s.cor]))
+                        : { AZUL: "#55555c", AMARELA: "#55555c", CIANO: "#55555c", ROXA: "#e7b54a" };
   mc.fillStyle = cores.AZUL; mc.fillRect(ox, oy - esp, LONGA * esc, esp);
   mc.fillStyle = cores.AMARELA; mc.fillRect(ox, oy + CURTA * esc, LONGA * esc, esp);
   mc.fillStyle = cores.ROXA; mc.fillRect(ox - esp, oy, esp, CURTA * esc);
   mc.fillStyle = cores.CIANO; mc.fillRect(ox + LONGA * esc, oy, esp, CURTA * esc);
   mc.font = "600 20px Segoe UI, sans-serif"; mc.textAlign = "center"; mc.textBaseline = "middle"; mc.fillStyle = "#cfcfd6";
-  mc.fillText("ROXA · frente", ox + LONGA * esc / 2, Hm - 12);
+  if (INTERNO) mc.fillText("ROXA · frente", ox + LONGA * esc / 2, Hm - 12);
+  else {  // "frente" de pé, junto da parede da frente
+    mc.save(); mc.translate(ox - esp - 11, oy + CURTA * esc / 2); mc.rotate(-Math.PI / 2);
+    mc.fillStyle = "#e7b54a"; mc.fillText("frente", 0, 0); mc.restore();
+  }
   // câmera e cone de visão
   const [cx, cy] = P(cam.pos[0], cam.pos[2]);
   const ang = Math.atan2(-f[0], -f[2]);  // direção na tela do mapa: dx = -fz, dy = -fx
-  const meio = Math.min(cam.fov, 120) * Math.PI / 360, raio = 70;
+  const meio = Math.min(fovHorizontal(), 120) * Math.PI / 360, raio = 70;
   mc.save(); mc.beginPath(); mc.rect(0, 0, Wm, Hm); mc.clip();
   mc.fillStyle = "rgba(231,181,74,.25)"; mc.beginPath(); mc.moveTo(cx, cy);
   mc.arc(cx, cy, raio, ang - meio, ang + meio); mc.closePath(); mc.fill();
@@ -741,7 +817,7 @@ cv.addEventListener("pointermove", e => {
   if (!toques.has(e.pointerId)) return;
   const [x0, y0] = toques.get(e.pointerId); const dx = e.clientX - x0, dy = e.clientY - y0;
   toques.set(e.pointerId, [e.clientX, e.clientY]);
-  const graus = cam.fov / cv.clientWidth;  // arrastar a largura da tela gira o próprio campo de visão
+  const graus = fovHorizontal() / cv.clientWidth;  // arrastar a largura da tela gira o campo de visão horizontal
   if (toques.size >= 2) {  // dois dedos: andar
     const { f, r } = base(); const fh = norm([f[0], 0, f[2]]), rh = norm([r[0], 0, r[2]]);
     const k = 3; mover((-dy * fh[0] + dx * rh[0]) * k / toques.size, 0, (-dy * fh[2] + dx * rh[2]) * k / toques.size);
@@ -769,7 +845,8 @@ document.getElementById("bTela").addEventListener("click", telaCheia);
 if (!podeTelaCheia) document.getElementById("bTela").classList.add("oculto");
 
 // vídeo: play, tempo, quadro a quadro, velocidade, som
-const bPlay = document.getElementById("bPlay"), linha = document.getElementById("linha"), tempo = document.getElementById("tempo");
+const bPlay = document.getElementById("bPlay"), linha = document.getElementById("linha");
+const tAtual = document.getElementById("tAtual"), tTotal = document.getElementById("tTotal");
 const fps = META.fps || 30;
 function atualizarPlay() { bPlay.textContent = video.paused ? "▶" : "❚❚"; }
 function alternarPlay() { if (video.paused) video.play().catch(() => {}); else video.pause(); }
@@ -791,15 +868,43 @@ function definirSom(lig) {
   bSom.title = lig ? "som ligado (clique para desligar)" : "som desligado (clique para ligar)";
   if (lig) esconderPilula();
 }
-function mostrarPilula() { pilulaSom.classList.remove("oculto", "saindo"); }
+// a pílula é convite, não aviso fixo: some em 8 s ou na primeira mexida (clique, toque, tecla, roda)
+const PILULA_MS = 8000;
+let pilulaT = 0;
+function mostrarPilula() {
+  pilulaSom.classList.remove("oculto", "saindo"); posicionarPilula();
+  clearTimeout(pilulaT); pilulaT = setTimeout(esconderPilula, PILULA_MS);
+}
 function esconderPilula() {
-  if (pilulaSom.classList.contains("oculto")) return;
+  clearTimeout(pilulaT);
+  if (pilulaSom.classList.contains("oculto") || pilulaSom.classList.contains("saindo")) return;
   pilulaSom.classList.add("saindo"); setTimeout(() => pilulaSom.classList.add("oculto"), 650);
 }
-bSom.addEventListener("click", () => definirSom(video.muted));
-pilulaSom.addEventListener("click", () => definirSom(true));
+// a pílula fica no meio, embaixo; se a ajuda ou o mapa estiverem nesse caminho (janelas de ~760 a ~920 px), sobe
+// para cima deles
+function posicionarPilula() {
+  pilulaSom.style.bottom = "";
+  if (pilulaSom.classList.contains("oculto")) return;
+  const p = pilulaSom.getBoundingClientRect();
+  let topo = Infinity;
+  for (const el of [ajuda, mapa]) {
+    if (el.classList.contains("apagada") || el.classList.contains("oculto")) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width && r.left < p.right + 8 && r.right > p.left - 8 && r.top < p.bottom + 8) topo = Math.min(topo, r.top);
+  }
+  if (topo < Infinity) pilulaSom.style.bottom = (innerHeight - topo + 10) + "px";
+}
+addEventListener("resize", posicionarPilula);
+const fimPilula = e => { if (!e.target.closest || !e.target.closest("#pilulaSom")) esconderPilula(); };
+addEventListener("pointerdown", fimPilula, true); addEventListener("keydown", fimPilula, true);
+addEventListener("wheel", fimPilula, { capture: true, passive: true });
+// a escolha da pessoa (botão Som ou pílula) vale até ela mudar; null = ainda não escolheu
+let escolhaSom = null;
+bSom.addEventListener("click", () => { escolhaSom = video.muted; definirSom(escolhaSom); });
+pilulaSom.addEventListener("click", () => { escolhaSom = true; definirSom(true); });
 definirSom(false);
-const fmt = t => { t = Math.max(0, t || 0); const m = Math.floor(t / 60), s = t - m * 60; return String(m).padStart(2, "0") + ":" + s.toFixed(2).padStart(5, "0"); };
+const fmt = t => { t = Math.max(0, Math.floor(t || 0)); return String(Math.floor(t / 60)).padStart(2, "0") + ":" +
+  String(t % 60).padStart(2, "0"); };  // mm:ss
 
 // ------------------------------------------------------------------ laço
 let antes = performance.now();
@@ -822,7 +927,9 @@ function quadro(agora) {
   }
   if (video.duration) {
     if (!arrastandoLinha) linha.value = Math.round(video.currentTime / video.duration * 1000);
-    tempo.textContent = fmt(video.currentTime) + " / " + fmt(video.duration);
+    const ta = fmt(video.currentTime), tt = " / " + fmt(video.duration);
+    if (tAtual.textContent !== ta) tAtual.textContent = ta;
+    if (tTotal.textContent !== tt) tTotal.textContent = tt;
   }
   requestAnimationFrame(quadro);
 }
@@ -844,8 +951,30 @@ function aposMexer() {
 }
 cv.addEventListener("pointerdown", aposMexer);
 addEventListener("keydown", aposMexer);
+// celular: a interface (título, vistas, barra) some depois de 4 s sem toque, para a sala ocupar a tela; o primeiro
+// toque só a traz de volta (não gira a sala nem aperta botão). Com o filme parado ela fica, porque o play está nela.
+const UI_MS = 4000;
+let uiT = 0;
+const salaAberta = () => abertura.classList.contains("oculto");
+function interfaceViva() {
+  document.body.classList.remove("uiOculta");
+  clearTimeout(uiT);
+  if (CELULAR && salaAberta()) uiT = setTimeout(esconderInterface, UI_MS);
+}
+function esconderInterface() {
+  if (!CELULAR || !salaAberta()) return;
+  if (toques.size || video.paused) { uiT = setTimeout(esconderInterface, UI_MS); return; }  // arrastando ou parado
+  document.body.classList.add("uiOculta");
+}
+addEventListener("pointerdown", e => {
+  if (!CELULAR || !salaAberta()) return;
+  if (document.body.classList.contains("uiOculta")) { e.stopPropagation(); e.preventDefault(); }  // só acorda
+  interfaceViva();
+}, true);
+addEventListener("pointerup", () => { if (CELULAR && salaAberta() && !document.body.classList.contains("uiOculta")) interfaceViva(); }, true);
+video.addEventListener("pause", () => { if (CELULAR && salaAberta()) interfaceViva(); });
 irPara("publico");
-setTimeout(() => { try { iniciarVideo(); } catch (e) { console.error(e); } }, 30);
+setTimeout(() => { try { iniciarVideo(); } catch (e) { if (!e.naTela) console.error(e); } }, 30);
 requestAnimationFrame(quadro);
 </script>
 </body>
